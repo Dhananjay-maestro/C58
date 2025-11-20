@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Happy Birthday Princee — Universal Audio Tester</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#fff0f8,#e8f7ff);margin:0;padding:24px;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .card{width:min(980px,96%);background:#fff;border-radius:14px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,0.08)}
+    h1{margin:0 0 6px 0;color:#ff2d7a;font-family: 'Merienda', cursive}
+    p{margin:6px 0;color:#333}
+    .controls{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+    button{padding:10px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:700;background:#ff2d7a;color:#fff}
+    button.alt{background:transparent;color:#ff2d7a;border:2px solid #ff83c7}
+    pre{background:#f6f6f6;padding:10px;border-radius:8px;overflow:auto;margin-top:12px;max-height:180px}
+    small{color:#666}
+    audio{width:100%;margin-top:12px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Happy Birthday Princee 🎀</h1>
+    <p>Trying multiple ways to play your uploaded song. Click <strong>TRY PLAY</strong>. Status updates will appear below — copy any error and send to me if it still doesn't play.</p>
+
+    <!-- Primary audio element (we will try multiple src strategies on it) -->
+    <audio id="bgAudio" controls preload="none"></audio>
+
+    <div class="controls">
+      <button id="tryPlay">TRY PLAY</button>
+      <button id="tryPlayConfetti" class="alt">TRY PLAY + CONFETTI</button>
+      <button id="showSrc" class="alt">Show attempted src</button>
+    </div>
+
+    <p><small>Paths I will try (in order):</small></p>
+    <pre id="pathsList">1) sandbox:/mnt/data/theuned_happy-birthday-crowd(chosic.com).mp3
+2) /mnt/data/theuned_happy-birthday-crowd(chosic.com).mp3
+3) fetch('/mnt/data/...') then blob fallback
+4) (if provided) any public URL you paste</pre>
+
+    <pre id="log">Status: ready — click TRY PLAY</pre>
+
+    <p style="margin-top:10px;color:#666">If none of the methods work, paste the final log text here (or screenshot of DevTools Console) and I'll fix it instantly.</p>
+  </div>
+
+<script>
+(async function(){
+  const audio = document.getElementById('bgAudio');
+  const tryBtn = document.getElementById('tryPlay');
+  const confettiBtn = document.getElementById('tryPlayConfetti');
+  const showSrc = document.getElementById('showSrc');
+  const logEl = document.getElementById('log');
+
+  const tried = [];
+  function log(t){
+    console.log(t);
+    logEl.textContent = (new Date()).toLocaleTimeString() + ' — ' + t;
+  }
+
+  // The exact file paths you uploaded (used in attempts)
+  const sandboxPath = 'sandbox:/mnt/data/theuned_happy-birthday-crowd(chosic.com).mp3';
+  const mntPath = '/mnt/data/theuned_happy-birthday-crowd(chosic.com).mp3';
+
+  // Helper: attempt to set audio src and play
+  async function setSrcAndPlay(src){
+    try{
+      tried.push(src);
+      audio.src = src;
+      log('Trying src: ' + src);
+      await audio.play();
+      log('✅ Playback started using: ' + src);
+      return true;
+    }catch(err){
+      log('✖ Play failed for src: ' + src + ' — ' + (err && err.message ? err.message : err));
+      return false;
+    }
+  }
+
+  // Helper: fetch file and create blob URL (best fallback for environments that serve the file but block direct audio element)
+  async function fetchToBlobAndPlay(fetchUrl){
+    try{
+      tried.push('fetch:'+fetchUrl);
+      log('Attempting fetch -> blob for: ' + fetchUrl);
+      const resp = await fetch(fetchUrl, {method:'GET'});
+      if(!resp.ok) {
+        log('✖ Fetch failed, status ' + resp.status + ' for ' + fetchUrl);
+        return false;
+      }
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      log('Created blob URL, trying to play blob...');
+      audio.src = blobUrl;
+      await audio.play();
+      log('✅ Playback started using blob URL (from '+fetchUrl+')');
+      return true;
+    }catch(err){
+      log('✖ Fetch->blob failed for ' + fetchUrl + ' — ' + (err && err.message ? err.message : err));
+      return false;
+    }
+  }
+
+  // Master try sequence
+  async function tryAll(publicUrl){
+    log('=== Starting multi-method play attempt ===');
+    // 1) Try direct sandbox path (ChatGPT sandbox / transformed URL)
+    if(await setSrcAndPlay(sandboxPath)) return;
+
+    // 2) Try direct /mnt/data path
+    if(await setSrcAndPlay(mntPath)) return;
+
+    // 3) Try fetch + blob from /mnt/data
+    if(await fetchToBlobAndPlay(mntPath)) return;
+
+    // 4) Try fetch + blob from sandbox path
+    if(await fetchToBlobAndPlay(sandboxPath)) return;
+
+    // 5) If user has a public URL (we didn't get one), we would try it — show instructions
+    if(publicUrl){
+      if(await setSrcAndPlay(publicUrl)) return;
+      if(await fetchToBlobAndPlay(publicUrl)) return;
+    }
+
+    // Final: failed
+    log('⚠️ All attempts failed. Tried sources:\n' + tried.join('\n'));
+    alert('Playback failed on all attempts. Please copy the log (bottom) and send to me so I can fix — or provide a public mp3 URL.');
+  }
+
+  // Buttons
+  tryBtn.addEventListener('click', () => tryAll());
+  confettiBtn.addEventListener('click', async () => {
+    await tryAll();
+    // confetti visual can be added here if desired (not included to keep this focused)
+  });
+  showSrc.addEventListener('click', () => {
+    alert('Audio element current src: ' + audio.src + '\n\nTried sources are shown in the log area.');
+    log('Audio element src: ' + audio.src + ' | window.location: ' + window.location.href);
+  });
+
+  // Helpful: report HTMLAudioElement errors
+  audio.addEventListener('error', (e) => {
+    const code = audio.error && audio.error.code ? audio.error.code : 'unknown';
+    console.error('Audio element error event:', e, audio.error);
+    log('Audio element error detected. code=' + code + ' (see console)');
+  });
+
+})();
+</script>
+</body>
+</html>
